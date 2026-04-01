@@ -3,16 +3,21 @@ import sqlite3
 import pandas as pd
 from io import BytesIO
 import os
+from datetime import datetime
+import uuid
 
-DB_NAME = "inventory.db"
+# ---------------- CONFIG ----------------
+DB_NAME = r"C:/Users/starb/OneDrive/Documentos/App_Project/Inventory App/PROD/inventory.db"
 app = Flask(__name__)
-
-# 🔐 REQUIRED environment variables (NO defaults now)
 app.secret_key = os.environ["SECRET_KEY"]
-USERNAME = os.environ["APP_USER"]
-PASSWORD = os.environ["APP_PASS"]
 
-# ---------- Login حماية ----------
+# 2 USERS
+USERS = {
+    os.environ["APP_USER"]: os.environ["APP_PASS"],
+    os.environ.get("APP_USER2"): os.environ.get("APP_PASS2")
+}
+
+# ---------------- LOGIN DECORATOR ----------------
 def login_required(f):
     from functools import wraps
     @wraps(f)
@@ -22,142 +27,125 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# ---------- Database ----------
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            product_no TEXT PRIMARY KEY,
-            item_name TEXT,
-            quantity INTEGER
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def run_query(query, params=()):
+# ---------------- DATABASE ----------------
+def run_query(query, params=(), fetch=True):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute(query, params)
+    data = cursor.fetchall() if fetch else None
     conn.commit()
-    data = cursor.fetchall()
     conn.close()
     return data
 
-# ---------- Routes ----------
+def init_db():
+    run_query("""
+        CREATE TABLE IF NOT EXISTS inventory_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            source_table TEXT,
+            product_no TEXT,
+            description TEXT,
+            quantity INTEGER,
+            created_at TEXT
+        )
+    """, fetch=False)
+
+# ---------------- ROUTES ----------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         user = request.form.get("username")
         pwd = request.form.get("password")
 
-        if user == USERNAME and pwd == PASSWORD:
+        if USERS.get(user) == pwd:
             session["logged_in"] = True
-            flash("Logged in successfully!", "success")
+            session["user"] = user
             return redirect("/")
         else:
-            flash("Invalid username or password", "warning")
-            return redirect("/login")
-
+            flash("Invalid login", "warning")
     return render_template("login.html")
 
 @app.route("/logout")
 @login_required
 def logout():
     session.clear()
-    flash("Logged out successfully!", "success")
     return redirect("/login")
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 @login_required
 def index():
-    if request.method == "POST":
-        product = request.form.get("product").strip()
-        name = request.form.get("name").strip()
-        qty = request.form.get("quantity").strip()
-        qty = int(qty) if qty else None
+    return render_template("index.html")
 
-        try:
-            run_query("INSERT INTO inventory VALUES (?, ?, ?)", (product, name, qty))
-            flash("Item added successfully!", "success")
-        except:
-            flash("Product# already exists!", "warning")
-
-        return redirect("/")
-
-    items = run_query("SELECT * FROM inventory")
-    return render_template("index.html", items=items)
-
-@app.route("/delete/<product_no>")
+@app.route("/start_session")
 @login_required
-def delete(product_no):
-    run_query("DELETE FROM inventory WHERE product_no=?", (product_no,))
-    flash("Item deleted!", "success")
+def start_session():
+    session["session_id"] = str(uuid.uuid4())
+    flash("New report started!", "success")
     return redirect("/")
 
-@app.route("/edit/<product_no>", methods=["GET", "POST"])
+@app.route("/get_products/<table>")
 @login_required
-def edit(product_no):
-    if request.method == "POST":
-        qty = request.form.get("quantity")
-        try:
-            qty = int(qty)
-            run_query("UPDATE inventory SET quantity=? WHERE product_no=?", (qty, product_no))
-            flash("Quantity updated!", "success")
-        except:
-            flash("Invalid number", "warning")
+def get_products(table):
+    data = run_query(f"SELECT * FROM {table}")
+    return {"data": data}
 
-        return redirect("/")
-
-    item = run_query("SELECT * FROM inventory WHERE product_no=?", (product_no,))
-    return render_template("edit.html", item=item[0])
-
-@app.route("/upload", methods=["POST"])
+@app.route("/save", methods=["POST"])
 @login_required
-def upload():
-    file = request.files.get("file")
-    if not file:
-        flash("No file selected", "warning")
-        return redirect("/")
+def save():
+    session_id = session.get("session_id")
+    if not session_id:
+        return {"error": "Start a session first"}
 
-    df = pd.read_excel(file)
-    existing = set(x[0] for x in run_query("SELECT product_no FROM inventory"))
+    table = request.form.get("table")
+    product = request.form.get("product")
+    description = request.form.get("description")
+    qty = request.form.get("qty")
 
-    new_count = 0
-    duplicate_count = 0
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    for _, row in df.iterrows():
-        product = str(row.iloc[0]).strip()
-        name = str(row.iloc[1]).strip()
+    run_query("""
+        INSERT INTO inventory_reports 
+        (session_id, source_table, product_no, description, quantity, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (session_id, table, product, description, qty, timestamp), fetch=False)
 
-        if not product or product.lower() == "nan":
-            continue
+    return {"status": "success"}
 
-        if product in existing:
-            duplicate_count += 1
-            continue
-
-        run_query("INSERT INTO inventory VALUES (?, ?, ?)", (product, name, None))
-        existing.add(product)
-        new_count += 1
-
-    flash(f"Upload Summary: New: {new_count}, Duplicates: {duplicate_count}", "info")
-    return redirect("/")
+@app.route("/get_entries")
+@login_required
+def get_entries():
+    session_id = session.get("session_id")
+    if not session_id:
+        return {"entries": []}
+    data = run_query(
+        "SELECT product_no, description, quantity, created_at "
+        "FROM inventory_reports WHERE session_id=? ORDER BY id DESC",
+        (session_id,)
+    )
+    entries = [{"product_no":r[0],"description":r[1],"quantity":r[2],"created_at":r[3]} for r in data]
+    return {"entries": entries}
 
 @app.route("/export")
 @login_required
 def export():
-    data = run_query("SELECT * FROM inventory")
-    df = pd.DataFrame(data, columns=["Product#", "Item Name", "Quantity"])
+    session_id = session.get("session_id")
+    if not session_id:
+        flash("No active session!", "warning")
+        return redirect("/")
 
+    data = run_query(
+        "SELECT product_no, description, quantity, created_at "
+        "FROM inventory_reports WHERE session_id=? ORDER BY id",
+        (session_id,)
+    )
+    
+    df = pd.DataFrame(data, columns=["Product","Description","Quantity","Timestamp"])
     output = BytesIO()
     df.to_excel(output, index=False)
     output.seek(0)
+    return send_file(output, download_name="report.xlsx", as_attachment=True)
 
-    return send_file(output, download_name="inventory.xlsx", as_attachment=True)
-
-# ---------- Run ----------
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 10000))
