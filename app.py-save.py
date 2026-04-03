@@ -7,15 +7,11 @@ from datetime import datetime
 import uuid
 
 # ---------------- CONFIG ----------------
-DB_NAME = "inventory.db"
-
-ICECREAM_FILE = "Ice Cream Order_Sheet.csv"
-CHOCOLATE_FILE = "Case Chocolates Order_Sheet.csv"
-
+DB_NAME = r"C:/Users/starb/OneDrive/Documentos/App_Project/Inventory App/PROD/inventory.db"
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
 
-# USERS
+# 2 USERS
 USERS = {
     os.environ["APP_USER"]: os.environ["APP_PASS"],
     os.environ.get("APP_USER2"): os.environ.get("APP_PASS2")
@@ -46,34 +42,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS inventory_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT,
-            source TEXT,
+            source_table TEXT,
             product_no TEXT,
             description TEXT,
-            product_type TEXT,
             quantity INTEGER,
             created_at TEXT
         )
     """, fetch=False)
-
-# ---------------- CSV LOADER ----------------
-def load_file(file_path):
-    df = pd.read_csv(file_path)
-
-    # Normalize headers
-    df.columns = [c.strip().lower() for c in df.columns]
-
-    # Map headers to standard names
-    rename_map = {}
-    if "product_no" in df.columns:
-        rename_map["product_no"] = "product_no"
-    if "description" in df.columns:
-        rename_map["description"] = "description"
-    df.rename(columns=rename_map, inplace=True)
-
-    # Keep only product_no and description for listing
-    df = df[["product_no", "description"]]
-
-    return df
 
 # ---------------- ROUTES ----------------
 @app.route("/login", methods=["GET", "POST"])
@@ -108,24 +83,12 @@ def start_session():
     flash("New report started!", "success")
     return redirect("/")
 
-# ---------------- GET PRODUCTS ----------------
-@app.route("/get_products/<source>")
+@app.route("/get_products/<table>")
 @login_required
-def get_products(source):
-
-    source = source.lower()
-
-    if source == "icecream":
-        df = load_file(ICECREAM_FILE)
-    elif source == "case_chocolate":
-        df = load_file(CHOCOLATE_FILE)
-    else:
-        return {"data": []}
-
-    data = df[["product_no", "description"]].values.tolist()
+def get_products(table):
+    data = run_query(f"SELECT * FROM {table}")
     return {"data": data}
 
-# ---------------- SAVE ENTRY ----------------
 @app.route("/save", methods=["POST"])
 @login_required
 def save():
@@ -133,7 +96,7 @@ def save():
     if not session_id:
         return {"error": "Start a session first"}
 
-    source = request.form.get("table")  # keep same frontend key
+    table = request.form.get("table")
     product = request.form.get("product")
     description = request.form.get("description")
     qty = request.form.get("qty")
@@ -141,37 +104,27 @@ def save():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     run_query("""
-        INSERT INTO inventory_reports
-        (session_id, source, product_no, description, quantity, created_at)
+        INSERT INTO inventory_reports 
+        (session_id, source_table, product_no, description, quantity, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (session_id, source, product, description, qty, timestamp), fetch=False)
+    """, (session_id, table, product, description, qty, timestamp), fetch=False)
 
     return {"status": "success"}
 
-# ---------------- GET ENTRIES ----------------
 @app.route("/get_entries")
 @login_required
 def get_entries():
     session_id = session.get("session_id")
     if not session_id:
         return {"entries": []}
-
     data = run_query(
         "SELECT product_no, description, quantity, created_at "
         "FROM inventory_reports WHERE session_id=? ORDER BY id DESC",
         (session_id,)
     )
-
-    entries = [{
-        "product_no": r[0],
-        "description": r[1],
-        "quantity": r[2],
-        "created_at": r[3]
-    } for r in data]
-
+    entries = [{"product_no":r[0],"description":r[1],"quantity":r[2],"created_at":r[3]} for r in data]
     return {"entries": entries}
 
-# ---------------- EXPORT ----------------
 @app.route("/export")
 @login_required
 def export():
@@ -185,13 +138,11 @@ def export():
         "FROM inventory_reports WHERE session_id=? ORDER BY id",
         (session_id,)
     )
-
+    
     df = pd.DataFrame(data, columns=["Product","Description","Quantity","Timestamp"])
-
     output = BytesIO()
     df.to_excel(output, index=False)
     output.seek(0)
-
     return send_file(output, download_name="report.xlsx", as_attachment=True)
 
 # ---------------- RUN ----------------
