@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory App</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+body{background:#f5f5f5}
+.navbar{margin-bottom:20px}
+.table-container{max-height:300px;overflow-y:auto}
+</style>
+
+<script>
+let currentTable="";
+let productsData=[];
+
+function loadTable(table){
+    currentTable = table;
+
+    fetch(`/get_products/${table}`)
+    .then(res=>res.json())
+    .then(data=>{
+        productsData = data.data;
+
+        let pList=document.getElementById("productList");
+        let dList=document.getElementById("descList");
+        pList.innerHTML=""; dList.innerHTML="";
+
+        productsData.forEach(r=>{
+            let o1=document.createElement("option"); o1.value=r[0]; pList.appendChild(o1);
+            let o2=document.createElement("option"); o2.value=r[1]; dList.appendChild(o2);
+        });
+    });
+}
+
+// -------- FINAL SYNC FIX --------
+function syncFromProduct(){
+    setTimeout(()=>{
+        let val=document.getElementById("product_no").value.trim();
+        let match=productsData.find(r=>r[0]===val) ||
+                  productsData.find(r=>r[0].startsWith(val));
+        if(match) document.getElementById("description").value=match[1];
+    },50);
+}
+
+function syncFromDescription(){
+    setTimeout(()=>{
+        let val=document.getElementById("description").value.trim().toLowerCase();
+        let match=productsData.find(r=>r[1].toLowerCase()===val) ||
+                  productsData.find(r=>r[1].toLowerCase().startsWith(val));
+        if(match) document.getElementById("product_no").value=match[0];
+    },50);
+}
+
+// Save
+function saveData(){
+    let f=new FormData();
+    f.append("table",currentTable);
+    f.append("product",document.getElementById("product_no").value);
+    f.append("description",document.getElementById("description").value);
+    f.append("qty",document.getElementById("qty").value);
+    f.append("comment",document.getElementById("comment").value);
+
+    fetch("/save",{method:"POST",body:f})
+    .then(r=>r.json())
+    .then(d=>{
+        if(d.error) alert(d.error);
+        else{
+            document.getElementById("qty").value="";
+            document.getElementById("comment").value="";
+            loadSessionEntries();
+        }
+    });
+}
+
+function loadSessionEntries(){
+    fetch("/get_entries").then(r=>r.json()).then(data=>{
+        let tbody=document.getElementById("entriesBody");
+        tbody.innerHTML="";
+        data.entries.forEach(row=>{
+            let tr=document.createElement("tr");
+            tr.innerHTML=`
+            <td>${row.product_no}</td>
+            <td>${row.description}</td>
+            <td>${row.quantity}</td>
+            <td>${row.comment||""}</td>
+            <td>${row.created_at}</td>
+            <td><button class="btn btn-sm btn-danger" onclick="deleteEntry(${row.id})">Delete</button></td>`;
+            tbody.appendChild(tr);
+        });
+    });
+}
+
+function deleteEntry(id){
+    if(!confirm("Delete?")) return;
+    let f=new FormData(); f.append("id",id);
+    fetch("/delete_entry",{method:"POST",body:f})
+    .then(()=>loadSessionEntries());
+}
+
+window.onload=()=>loadSessionEntries();
+</script>
+</head>
+
+<body>
+
+<nav class="navbar navbar-dark bg-dark navbar-expand-lg">
+<div class="container-fluid">
+<a class="navbar-brand">Inventory</a>
+<button class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#m"><span class="navbar-toggler-icon"></span></button>
+<div class="collapse navbar-collapse" id="m">
+<ul class="navbar-nav">
+<li class="nav-item"><a class="nav-link" href="/start_session">Start New Report</a></li>
+<li class="nav-item"><a class="nav-link" href="/export">Export</a></li>
+<li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
+</ul>
+</div>
+</div>
+</nav>
+
+<div class="container">
+
+<button class="btn btn-primary mb-2" onclick="loadTable('Icecream')">Ice Cream</button>
+<button class="btn btn-success mb-2" onclick="loadTable('case_chocolate')">Case Chocolates</button>
+
+<div class="card p-3 mb-3">
+<div class="row g-2">
+
+<div class="col-md-3">
+<input list="productList" id="product_no" class="form-control"
+oninput="syncFromProduct()" onchange="syncFromProduct()" onblur="syncFromProduct()">
+<datalist id="productList"></datalist>
+</div>
+
+<div class="col-md-4">
+<input list="descList" id="description" class="form-control"
+oninput="syncFromDescription()" onchange="syncFromDescription()" onblur="syncFromDescription()">
+<datalist id="descList"></datalist>
+</div>
+
+<div class="col-md-2">
+<input id="qty" type="number" class="form-control" placeholder="Qty">
+</div>
+
+<div class="col-md-3">
+<input id="comment" class="form-control" placeholder="Comment">
+</div>
+
+<div class="col-md-12 mt-2">
+<button class="btn btn-warning w-100" onclick="saveData()">Save Entry</button>
+</div>
+
+</div>
+</div>
+
+<h5>Entries</h5>
+<div class="table-container card p-3">
+<table class="table table-sm table-bordered">
+<thead>
+<tr><th>Product</th><th>Description</th><th>Qty</th><th>Comment</th><th>Time</th><th></th></tr>
+</thead>
+<tbody id="entriesBody"></tbody>
+</table>
+</div>
+
+</div>
+</body>
+</html>

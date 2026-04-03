@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, send_file, flash, session, url_for
+from flask import Flask, render_template, request, redirect, send_file, flash, session, url_for, jsonify
 import sqlite3
 import pandas as pd
 from io import BytesIO
@@ -6,22 +6,17 @@ import os
 from datetime import datetime
 import uuid
 
-# ---------------- CONFIG ----------------
 DB_NAME = "inventory.db"
-
 ICECREAM_FILE = "Ice Cream Order_Sheet.csv"
 CHOCOLATE_FILE = "Case Chocolates Order_Sheet.csv"
 
 app = Flask(__name__)
-app.secret_key = os.environ["SECRET_KEY"]
+app.secret_key = os.environ.get("SECRET_KEY","dev_secret_key")
 
-# USERS
 USERS = {
-    os.environ["APP_USER"]: os.environ["APP_PASS"],
-    os.environ.get("APP_USER2"): os.environ.get("APP_PASS2")
+    os.environ.get("APP_USER","admin"): os.environ.get("APP_PASS","admin")
 }
 
-# ---------------- LOGIN DECORATOR ----------------
 def login_required(f):
     from functools import wraps
     @wraps(f)
@@ -31,7 +26,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# ---------------- DATABASE ----------------
 def run_query(query, params=(), fetch=True):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -49,45 +43,35 @@ def init_db():
             source TEXT,
             product_no TEXT,
             description TEXT,
-            product_type TEXT,
             quantity INTEGER,
             created_at TEXT
         )
     """, fetch=False)
 
-# ---------------- CSV LOADER ----------------
+    # Ensure comment column exists
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(inventory_reports)")
+    cols = [c[1] for c in cursor.fetchall()]
+    if "comment" not in cols:
+        cursor.execute("ALTER TABLE inventory_reports ADD COLUMN comment TEXT")
+    conn.commit()
+    conn.close()
+
 def load_file(file_path):
     df = pd.read_csv(file_path)
-
-    # Normalize headers
     df.columns = [c.strip().lower() for c in df.columns]
+    return df[["product_no","description"]]
 
-    # Map headers to standard names
-    rename_map = {}
-    if "product_no" in df.columns:
-        rename_map["product_no"] = "product_no"
-    if "description" in df.columns:
-        rename_map["description"] = "description"
-    df.rename(columns=rename_map, inplace=True)
-
-    # Keep only product_no and description for listing
-    df = df[["product_no", "description"]]
-
-    return df
-
-# ---------------- ROUTES ----------------
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET","POST"])
 def login():
-    if request.method == "POST":
-        user = request.form.get("username")
-        pwd = request.form.get("password")
-
-        if USERS.get(user) == pwd:
-            session["logged_in"] = True
-            session["user"] = user
+    if request.method=="POST":
+        user=request.form.get("username")
+        pwd=request.form.get("password")
+        if USERS.get(user)==pwd:
+            session["logged_in"]=True
             return redirect("/")
-        else:
-            flash("Invalid login", "warning")
+        flash("Invalid login","warning")
     return render_template("login.html")
 
 @app.route("/logout")
@@ -105,97 +89,76 @@ def index():
 @login_required
 def start_session():
     session["session_id"] = str(uuid.uuid4())
-    flash("New report started!", "success")
+    flash("New report started!","success")
     return redirect("/")
 
-# ---------------- GET PRODUCTS ----------------
 @app.route("/get_products/<source>")
 @login_required
 def get_products(source):
-
-    source = source.lower()
-
-    if source == "icecream":
-        df = load_file(ICECREAM_FILE)
-    elif source == "case_chocolate":
-        df = load_file(CHOCOLATE_FILE)
+    if source.lower()=="icecream":
+        df=load_file(ICECREAM_FILE)
     else:
-        return {"data": []}
+        df=load_file(CHOCOLATE_FILE)
+    return {"data": df.values.tolist()}
 
-    data = df[["product_no", "description"]].values.tolist()
-    return {"data": data}
-
-# ---------------- SAVE ENTRY ----------------
 @app.route("/save", methods=["POST"])
 @login_required
 def save():
-    session_id = session.get("session_id")
-    if not session_id:
-        return {"error": "Start a session first"}
-
-    source = request.form.get("table")  # keep same frontend key
-    product = request.form.get("product")
-    description = request.form.get("description")
-    qty = request.form.get("qty")
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sid = session.get("session_id")
+    if not sid:
+        return {"error":"Start a session first"}
 
     run_query("""
         INSERT INTO inventory_reports
-        (session_id, source, product_no, description, quantity, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (session_id, source, product, description, qty, timestamp), fetch=False)
+        (session_id, source, product_no, description, quantity, comment, created_at)
+        VALUES (?,?,?,?,?,?,?)
+    """,(
+        sid,
+        request.form.get("table"),
+        request.form.get("product"),
+        request.form.get("description"),
+        request.form.get("qty"),
+        request.form.get("comment",""),
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ), fetch=False)
 
-    return {"status": "success"}
+    return {"status":"success"}
 
-# ---------------- GET ENTRIES ----------------
 @app.route("/get_entries")
 @login_required
 def get_entries():
-    session_id = session.get("session_id")
-    if not session_id:
-        return {"entries": []}
+    sid = session.get("session_id")
+    data = run_query("""
+        SELECT id, product_no, description, quantity, comment, created_at
+        FROM inventory_reports WHERE session_id=? ORDER BY id DESC
+    """,(sid,))
+    return {"entries":[
+        {"id":r[0],"product_no":r[1],"description":r[2],
+         "quantity":r[3],"comment":r[4],"created_at":r[5]}
+        for r in data
+    ]}
 
-    data = run_query(
-        "SELECT product_no, description, quantity, created_at "
-        "FROM inventory_reports WHERE session_id=? ORDER BY id DESC",
-        (session_id,)
-    )
+@app.route("/delete_entry", methods=["POST"])
+@login_required
+def delete_entry():
+    run_query("DELETE FROM inventory_reports WHERE id=?",
+              (request.form.get("id"),), fetch=False)
+    return {"status":"ok"}
 
-    entries = [{
-        "product_no": r[0],
-        "description": r[1],
-        "quantity": r[2],
-        "created_at": r[3]
-    } for r in data]
-
-    return {"entries": entries}
-
-# ---------------- EXPORT ----------------
 @app.route("/export")
 @login_required
 def export():
-    session_id = session.get("session_id")
-    if not session_id:
-        flash("No active session!", "warning")
-        return redirect("/")
-
-    data = run_query(
-        "SELECT product_no, description, quantity, created_at "
-        "FROM inventory_reports WHERE session_id=? ORDER BY id",
-        (session_id,)
-    )
-
-    df = pd.DataFrame(data, columns=["Product","Description","Quantity","Timestamp"])
-
+    sid = session.get("session_id")
+    data = run_query("""
+        SELECT product_no, description, quantity, comment, created_at
+        FROM inventory_reports WHERE session_id=? ORDER BY id
+    """,(sid,))
+    df = pd.DataFrame(data, columns=["Product","Description","Qty","Comment","Time"])
     output = BytesIO()
-    df.to_excel(output, index=False)
+    df.to_excel(output,index=False)
     output.seek(0)
-
     return send_file(output, download_name="report.xlsx", as_attachment=True)
 
-# ---------------- RUN ----------------
-if __name__ == "__main__":
+if __name__=="__main__":
     init_db()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
