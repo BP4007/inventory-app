@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, send_file, flash, session, url_for, jsonify
+from flask import Flask, render_template, request, redirect, send_file, flash, session, url_for
 import sqlite3
 import pandas as pd
 from io import BytesIO
@@ -14,9 +14,11 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY","dev_secret_key")
 
 USERS = {
-    os.environ.get("APP_USER","admin"): os.environ.get("APP_PASS","admin")
+    os.environ["APP_USER"]: os.environ["APP_PASS"],
+    os.environ.get("APP_USER2"): os.environ.get("APP_PASS2")
 }
 
+# ---------- AUTH ----------
 def login_required(f):
     from functools import wraps
     @wraps(f)
@@ -26,6 +28,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# ---------- DB ----------
 def run_query(query, params=(), fetch=True):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -58,11 +61,13 @@ def init_db():
     conn.commit()
     conn.close()
 
+# ---------- FILE LOAD ----------
 def load_file(file_path):
     df = pd.read_csv(file_path)
     df.columns = [c.strip().lower() for c in df.columns]
     return df[["product_no","description"]]
 
+# ---------- ROUTES ----------
 @app.route("/login", methods=["GET","POST"])
 def login():
     if request.method=="POST":
@@ -101,6 +106,7 @@ def get_products(source):
         df=load_file(CHOCOLATE_FILE)
     return {"data": df.values.tolist()}
 
+# ---------- SAVE ----------
 @app.route("/save", methods=["POST"])
 @login_required
 def save():
@@ -124,6 +130,7 @@ def save():
 
     return {"status":"success"}
 
+# ---------- GET ENTRIES ----------
 @app.route("/get_entries")
 @login_required
 def get_entries():
@@ -132,33 +139,77 @@ def get_entries():
         SELECT id, product_no, description, quantity, comment, created_at
         FROM inventory_reports WHERE session_id=? ORDER BY id DESC
     """,(sid,))
+
     return {"entries":[
-        {"id":r[0],"product_no":r[1],"description":r[2],
-         "quantity":r[3],"comment":r[4],"created_at":r[5]}
+        {
+            "id":r[0],
+            "product_no":r[1],
+            "description":r[2],
+            "quantity":r[3],
+            "comment":r[4],
+            "created_at":r[5]
+        }
         for r in data
     ]}
 
+# ---------- UPDATE (UPDATED WITH COMMENT) ----------
+@app.route("/update_entry", methods=["POST"])
+@login_required
+def update_entry():
+    entry_id = request.form.get("id")
+    qty = request.form.get("qty")
+    comment = request.form.get("comment","")
+
+    if not entry_id:
+        return {"error": "Missing ID"}
+
+    try:
+        qty = int(qty)
+    except:
+        return {"error": "Invalid quantity"}
+
+    run_query("""
+        UPDATE inventory_reports
+        SET quantity=?, comment=?
+        WHERE id=?
+    """, (qty, comment, entry_id), fetch=False)
+
+    return {"status":"updated"}
+
+# ---------- DELETE ----------
 @app.route("/delete_entry", methods=["POST"])
 @login_required
 def delete_entry():
-    run_query("DELETE FROM inventory_reports WHERE id=?",
-              (request.form.get("id"),), fetch=False)
-    return {"status":"ok"}
+    entry_id = request.form.get("id")
 
+    if not entry_id:
+        return {"error":"Missing ID"}
+
+    run_query("DELETE FROM inventory_reports WHERE id=?",
+              (entry_id,), fetch=False)
+
+    return {"status":"deleted"}
+
+# ---------- EXPORT ----------
 @app.route("/export")
 @login_required
 def export():
     sid = session.get("session_id")
+
     data = run_query("""
         SELECT product_no, description, quantity, comment, created_at
         FROM inventory_reports WHERE session_id=? ORDER BY id
     """,(sid,))
+
     df = pd.DataFrame(data, columns=["Product","Description","Qty","Comment","Time"])
+
     output = BytesIO()
     df.to_excel(output,index=False)
     output.seek(0)
+
     return send_file(output, download_name="report.xlsx", as_attachment=True)
 
+# ---------- RUN ----------
 if __name__=="__main__":
     init_db()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
