@@ -17,9 +17,15 @@ body{background:#f5f5f5}
 <script>
 let currentTable = "";
 
-// Load products
+// Load products (NORMAL MODE)
 function loadTable(table){
     currentTable = table;
+
+    // Restore normal dropdown mode
+    document.getElementById("product").style.display = "block";
+    document.getElementById("manualProduct").style.display = "none";
+    document.getElementById("desc").readOnly = true;
+
     fetch(`/get_products/${table}`)
     .then(res => res.json())
     .then(data => {
@@ -36,6 +42,18 @@ function loadTable(table){
     });
 }
 
+// OTHER REQUIRED ITEMS MODE
+function loadOtherItems(){
+    currentTable = "other";
+
+    document.getElementById("product").style.display = "none";
+    document.getElementById("manualProduct").style.display = "block";
+
+    document.getElementById("manualProduct").value = "";
+    document.getElementById("desc").value = "";
+    document.getElementById("desc").readOnly = false;
+}
+
 // Fill description
 function fillDescription(){
     let dropdown = document.getElementById("product");
@@ -48,9 +66,13 @@ function fillDescription(){
 
 // Save entry
 function saveData(){
+    let productValue = currentTable === "other"
+        ? document.getElementById("manualProduct").value
+        : document.getElementById("product").value;
+
     let form = new FormData();
     form.append("table", currentTable);
-    form.append("product", document.getElementById("product").value);
+    form.append("product", productValue);
     form.append("description", document.getElementById("desc").value);
     form.append("qty", document.getElementById("qty").value);
     form.append("comment", document.getElementById("comment").value);
@@ -100,7 +122,7 @@ function loadSessionEntries(){
     });
 }
 
-// Update entry (qty + comment)
+// Update entry
 function updateEntry(id){
     let qty = document.getElementById(`qty_${id}`).value;
     let comment = document.getElementById(`comment_${id}`).value;
@@ -176,19 +198,27 @@ window.onload = function(){
   <div class="toolbar mb-3">
     <button class="btn btn-primary" onclick="loadTable('Icecream')">Ice Cream</button>
     <button class="btn btn-success" onclick="loadTable('case_chocolate')">Case Chocolates</button>
+    <button class="btn btn-warning" onclick="loadOtherItems()">Other Required Items</button>
   </div>
 
   <div class="card p-3">
     <div class="row g-2 align-items-center">
+
       <div class="col-md-3">
         <select id="product" class="form-select" onchange="fillDescription()"></select>
+        <input id="manualProduct" class="form-control mt-1"
+               placeholder="Enter Product No"
+               style="display:none;">
       </div>
+
       <div class="col-md-3">
         <input id="desc" class="form-control" placeholder="Description" readonly>
       </div>
+
       <div class="col-md-2">
         <input id="qty" class="form-control" type="number" placeholder="Quantity">
       </div>
+
       <div class="col-md-4">
         <input id="comment" class="form-control" placeholder="Comment (optional)">
       </div>
