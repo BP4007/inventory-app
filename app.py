@@ -47,19 +47,10 @@ def init_db():
             product_no TEXT,
             description TEXT,
             quantity INTEGER,
+            comment TEXT,
             created_at TEXT
         )
     """, fetch=False)
-
-    # Ensure comment column exists
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(inventory_reports)")
-    cols = [c[1] for c in cursor.fetchall()]
-    if "comment" not in cols:
-        cursor.execute("ALTER TABLE inventory_reports ADD COLUMN comment TEXT")
-    conn.commit()
-    conn.close()
 
 # ---------- FILE LOAD ----------
 def load_file(file_path):
@@ -97,6 +88,37 @@ def start_session():
     flash("New report started!","success")
     return redirect("/")
 
+# ---------- REPORT LIST (NEW) ----------
+@app.route("/reports")
+@login_required
+def reports():
+    data = run_query("""
+        SELECT session_id, MIN(created_at) as start_time, COUNT(*)
+        FROM inventory_reports
+        GROUP BY session_id
+        ORDER BY start_time DESC
+    """)
+
+    reports = [
+        {
+            "session_id": r[0],
+            "start_time": r[1],
+            "count": r[2]
+        }
+        for r in data
+    ]
+
+    return render_template("reports.html", reports=reports)
+
+# ---------- LOAD OLD REPORT (NEW) ----------
+@app.route("/load_report/<sid>")
+@login_required
+def load_report(sid):
+    session["session_id"] = sid
+    flash("Loaded previous report","info")
+    return redirect("/")
+
+# ---------- GET PRODUCTS ----------
 @app.route("/get_products/<source>")
 @login_required
 def get_products(source):
@@ -152,21 +174,13 @@ def get_entries():
         for r in data
     ]}
 
-# ---------- UPDATE (UPDATED WITH COMMENT) ----------
+# ---------- UPDATE ----------
 @app.route("/update_entry", methods=["POST"])
 @login_required
 def update_entry():
     entry_id = request.form.get("id")
     qty = request.form.get("qty")
     comment = request.form.get("comment","")
-
-    if not entry_id:
-        return {"error": "Missing ID"}
-
-    try:
-        qty = int(qty)
-    except:
-        return {"error": "Invalid quantity"}
 
     run_query("""
         UPDATE inventory_reports
@@ -182,19 +196,16 @@ def update_entry():
 def delete_entry():
     entry_id = request.form.get("id")
 
-    if not entry_id:
-        return {"error":"Missing ID"}
-
     run_query("DELETE FROM inventory_reports WHERE id=?",
               (entry_id,), fetch=False)
 
     return {"status":"deleted"}
 
-# ---------- EXPORT ----------
+# ---------- EXPORT (CURRENT OR SPECIFIC REPORT) ----------
 @app.route("/export")
 @login_required
 def export():
-    sid = session.get("session_id")
+    sid = request.args.get("sid") or session.get("session_id")
 
     data = run_query("""
         SELECT product_no, description, quantity, comment, created_at
@@ -207,7 +218,7 @@ def export():
     df.to_excel(output,index=False)
     output.seek(0)
 
-    return send_file(output, download_name="report.xlsx", as_attachment=True)
+    return send_file(output, download_name=f"report_{sid}.xlsx", as_attachment=True)
 
 # ---------- RUN ----------
 if __name__=="__main__":

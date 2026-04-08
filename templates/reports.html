@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Saved Reports</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-4">
+
+<h3>Saved Reports</h3>
+
+<a href="/" class="btn btn-secondary mb-3">Back</a>
+
+<table class="table table-bordered table-striped">
+<thead>
+<tr>
+  <th>Start Time</th>
+  <th>Entries</th>
+  <th>Actions</th>
+</tr>
+</thead>
+
+<tbody>
+{% for r in reports %}
+<tr>
+  <td>{{ r.start_time }}</td>
+  <td>{{ r.count }}</td>
+  <td>
+    <a href="/load_report/{{ r.session_id }}" class="btn btn-sm btn-primary">Open</a>
+    <a href="/export?sid={{ r.session_id }}" class="btn btn-sm btn-success">Export</a>
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+</div>
+
+</body>
+</html>
