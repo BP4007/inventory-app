@@ -17,21 +17,13 @@
             background: rgba(0,0,0,0.65);
             border-radius: 15px;
             color: #fff;
+            box-shadow: 0 0 15px rgba(0,0,0,0.6);
         }
-        .login-container h2 {
-            margin-bottom: 20px;
-        }
-        .form-control {
-            font-size: 16px;
-        }
-        .btn-custom {
-            font-size: 16px;
-        }
+        .login-container h2 { margin-bottom: 20px; }
+        .form-control { font-size: 16px; }
+        .btn-custom { font-size: 16px; }
         @media (max-width: 576px) {
-            .login-container {
-                margin: 40px 15px;
-                padding: 20px;
-            }
+            .login-container { margin: 40px 15px; padding: 20px; }
         }
     </style>
 </head>
@@ -50,7 +42,7 @@
     <form method="post">
         <input class="form-control mb-3" type="text" name="username" placeholder="Username" required>
         <input class="form-control mb-3" type="password" name="password" placeholder="Password" required>
-        <button class="btn btn-primary btn-custom w-100">Login</button>
+        <button class="btn btn-blue btn-custom w-100">Login</button>
     </form>
 </div>
 </body>

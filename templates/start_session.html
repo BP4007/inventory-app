@@ -5,24 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Start New Report</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>
-body{background:#f3e6e6;}
-.card{border-radius:12px; border-top:4px solid #800000;}
-</style>
 </head>
-<body>
+<body class="bg-light">
 <div class="container mt-5">
-<div class="card p-4 shadow-sm">
-<h3 class="text-center mb-3">Start New Report</h3>
+<h3>Start New Report</h3>
 <form method="POST">
 <div class="mb-3">
 <label class="form-label">Report Name</label>
-<input type="text" name="report_name" class="form-control" placeholder="Enter report name" required>
+<input type="text" name="report_name" class="form-control" required>
 </div>
-<button class="btn btn-primary w-100">Start Report</button>
-<a href="/" class="btn btn-secondary w-100 mt-2">Cancel</a>
+<button type="submit" class="btn btn-primary">Start Report</button>
+<a href="/" class="btn btn-secondary">Cancel</a>
 </form>
-</div>
 </div>
 </body>
 </html>
