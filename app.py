@@ -43,6 +43,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS inventory_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT,
+            report_name TEXT,
             source TEXT,
             product_no TEXT,
             description TEXT,
@@ -79,42 +80,59 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html")
+    return render_template("index.html", report_name=session.get("report_name"))
 
-@app.route("/start_session")
+# ---------- START SESSION (UPDATED) ----------
+@app.route("/start_session", methods=["POST"])
 @login_required
 def start_session():
+    report_name = request.form.get("report_name")
+
+    if not report_name:
+        flash("Report name required","danger")
+        return redirect("/")
+
     session["session_id"] = str(uuid.uuid4())
-    flash("New report started!","success")
+    session["report_name"] = report_name
+
+    flash(f"Report '{report_name}' started!","success")
     return redirect("/")
 
-# ---------- REPORT LIST (NEW) ----------
+# ---------- REPORT LIST ----------
 @app.route("/reports")
 @login_required
 def reports():
     data = run_query("""
-        SELECT session_id, MIN(created_at) as start_time, COUNT(*)
+        SELECT session_id, report_name, MIN(created_at), COUNT(*)
         FROM inventory_reports
-        GROUP BY session_id
-        ORDER BY start_time DESC
+        GROUP BY session_id, report_name
+        ORDER BY MIN(created_at) DESC
     """)
 
     reports = [
         {
             "session_id": r[0],
-            "start_time": r[1],
-            "count": r[2]
+            "report_name": r[1],
+            "start_time": r[2],
+            "count": r[3]
         }
         for r in data
     ]
 
     return render_template("reports.html", reports=reports)
 
-# ---------- LOAD OLD REPORT (NEW) ----------
+# ---------- LOAD OLD REPORT ----------
 @app.route("/load_report/<sid>")
 @login_required
 def load_report(sid):
+    data = run_query("""
+        SELECT report_name FROM inventory_reports
+        WHERE session_id=? LIMIT 1
+    """,(sid,))
+
     session["session_id"] = sid
+    session["report_name"] = data[0][0] if data else "Loaded Report"
+
     flash("Loaded previous report","info")
     return redirect("/")
 
@@ -133,15 +151,18 @@ def get_products(source):
 @login_required
 def save():
     sid = session.get("session_id")
-    if not sid:
-        return {"error":"Start a session first"}
+    report_name = session.get("report_name")
+
+    if not sid or not report_name:
+        return {"error":"Start a report first"}
 
     run_query("""
         INSERT INTO inventory_reports
-        (session_id, source, product_no, description, quantity, comment, created_at)
-        VALUES (?,?,?,?,?,?,?)
+        (session_id, report_name, source, product_no, description, quantity, comment, created_at)
+        VALUES (?,?,?,?,?,?,?,?)
     """,(
         sid,
+        report_name,
         request.form.get("table"),
         request.form.get("product"),
         request.form.get("description"),
@@ -201,7 +222,7 @@ def delete_entry():
 
     return {"status":"deleted"}
 
-# ---------- EXPORT (CURRENT OR SPECIFIC REPORT) ----------
+# ---------- EXPORT ----------
 @app.route("/export")
 @login_required
 def export():

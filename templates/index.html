@@ -17,11 +17,10 @@ body{background:#f5f5f5}
 <script>
 let currentTable = "";
 
-// Load products (NORMAL MODE)
+// Load products
 function loadTable(table){
     currentTable = table;
 
-    // Restore normal dropdown mode
     document.getElementById("product").style.display = "block";
     document.getElementById("manualProduct").style.display = "none";
     document.getElementById("desc").readOnly = true;
@@ -134,13 +133,7 @@ function updateEntry(id){
 
     fetch("/update_entry", {method:"POST", body:form})
     .then(res => res.json())
-    .then(data => {
-        if(data.error){
-            alert(data.error);
-        } else {
-            loadSessionEntries();
-        }
-    });
+    .then(() => loadSessionEntries());
 }
 
 // Delete entry
@@ -152,13 +145,7 @@ function deleteEntry(id){
 
     fetch("/delete_entry", {method:"POST", body:form})
     .then(res => res.json())
-    .then(data => {
-        if(data.error){
-            alert(data.error);
-        } else {
-            loadSessionEntries();
-        }
-    });
+    .then(() => loadSessionEntries());
 }
 
 window.onload = function(){
@@ -173,24 +160,35 @@ window.onload = function(){
   <div class="container-fluid">
     <a class="navbar-brand" href="#">Inventory</a>
 
+    <span class="navbar-text text-white ms-3">
+      Current Report: <strong>{{ report_name if report_name else "Not Started" }}</strong>
+    </span>
+
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
       <span class="navbar-toggler-icon"></span>
     </button>
 
     <div class="collapse navbar-collapse" id="navbarNav">
       <ul class="navbar-nav me-auto">
+
         <li class="nav-item">
-          <a class="nav-link btn btn-sm btn-secondary me-2" href="/start_session">Start New Report</a>
+          <button class="btn btn-sm btn-secondary me-2" data-bs-toggle="modal" data-bs-target="#reportModal">
+            Start New Report
+          </button>
         </li>
+
         <li class="nav-item">
           <a class="nav-link btn btn-sm btn-info me-2" href="/export">Export</a>
         </li>
-		<li class="nav-item">
-		  <a class="nav-link btn btn-sm btn-warning me-2" href="/reports">View Reports</a>
-		</li>
+
+        <li class="nav-item">
+          <a class="nav-link btn btn-sm btn-warning me-2" href="/reports">View Reports</a>
+        </li>
+
         <li class="nav-item">
           <a class="nav-link btn btn-sm btn-danger" href="/logout">Logout</a>
         </li>
+
       </ul>
     </div>
   </div>
@@ -250,6 +248,25 @@ window.onload = function(){
     </table>
   </div>
 
+</div>
+
+<!-- REPORT MODAL -->
+<div class="modal fade" id="reportModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/start_session">
+        <div class="modal-header">
+          <h5 class="modal-title">Start New Report</h5>
+        </div>
+        <div class="modal-body">
+          <input name="report_name" class="form-control" placeholder="Enter Report Name" required>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary">Start</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 </body>

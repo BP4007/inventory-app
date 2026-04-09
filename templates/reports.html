@@ -18,6 +18,7 @@
 <table class="table table-bordered table-striped">
 <thead>
 <tr>
+  <th>Report Name</th>
   <th>Start Time</th>
   <th>Entries</th>
   <th>Actions</th>
@@ -27,6 +28,7 @@
 <tbody>
 {% for r in reports %}
 <tr>
+  <td>{{ r.report_name }}</td>
   <td>{{ r.start_time }}</td>
   <td>{{ r.count }}</td>
   <td>
