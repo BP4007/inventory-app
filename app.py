@@ -8,6 +8,10 @@ import uuid
 
 DB_NAME = "inventory.db"
 ICECREAM_FILE = "Ice Cream Order_Sheet.csv"
+ICECREAM_CAKE_FILE = "Ice Cream Cakes.csv"
+KITCHEN_FILE = "Kitchen.csv"
+NON_PERISHABLE_FILE = "Non Perishable Products.csv"
+LABELS_FILE = "Printed Labels.csv"
 CHOCOLATE_FILE = "Case Chocolates Order_Sheet.csv"
 
 app = Flask(__name__)
@@ -148,6 +152,14 @@ def load_report(sid):
 def get_products(source):
     if source.lower() == "icecream":
         df = load_file(ICECREAM_FILE)
+    elif source.lower() == "icecream_cake":
+        df = load_file(ICECREAM_CAKE_FILE)
+    elif source.lower() == "kitchen":
+        df = load_file(KITCHEN_FILE)
+    elif source.lower() == "non_perishable":
+        df = load_file(NON_PERISHABLE_FILE)
+    elif source.lower() == "labels":
+        df = load_file(LABELS_FILE)
     elif source.lower() == "case_chocolate":
         df = load_file(CHOCOLATE_FILE)
     else:
