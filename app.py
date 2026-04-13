@@ -9,6 +9,7 @@ import uuid
 DB_NAME = "inventory.db"
 ICECREAM_FILE = "Ice Cream Order_Sheet.csv"
 ICECREAM_CAKE_FILE = "Ice Cream Cakes.csv"
+ICECREAM_PRODUCTS_FILE = "Ice Cream Dept.csv"
 KITCHEN_FILE = "Kitchen.csv"
 NON_PERISHABLE_FILE = "Non Perishable Products.csv"
 LABELS_FILE = "Printed Labels.csv"
@@ -154,6 +155,8 @@ def get_products(source):
         df = load_file(ICECREAM_FILE)
     elif source.lower() == "icecream_cake":
         df = load_file(ICECREAM_CAKE_FILE)
+    elif source.lower() == "icecream_products":
+        df = load_file(ICECREAM_PRODUCTS_FILE)
     elif source.lower() == "kitchen":
         df = load_file(KITCHEN_FILE)
     elif source.lower() == "non_perishable":
